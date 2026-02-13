@@ -1,0 +1,8 @@
+<!--
+  Custom decoders for OT telemetry logs.
+  Note: With log_format=json in ossec.conf, the built-in json decoder
+  handles field extraction automatically. No custom child decoders needed.
+-->
+<decoder name="ot-noop">
+  <prematch>^THIS_WILL_NEVER_MATCH_ANYTHING$</prematch>
+</decoder>

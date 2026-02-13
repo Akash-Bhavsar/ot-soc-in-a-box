@@ -1,0 +1,202 @@
+services:
+  openplc:
+    image: fdamador/openplc:latest
+    container_name: ot-openplc
+    hostname: openplc
+    networks:
+      - ot-zone
+    ports:
+      - "8080:8080"
+      - "502:502"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/localhost/8080"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  modbus-sim:
+    image: oitc/modbus-server:latest
+    container_name: ot-modbus-sim
+    hostname: modbus-sim
+    networks:
+      - ot-zone
+    ports:
+      - "1502:5020"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',5020)); s.close()"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  zeek:
+    image: zeek/zeek:latest
+    container_name: ot-zeek
+    hostname: zeek
+    networks:
+      - ot-zone
+      - ot-dmz
+    volumes:
+      - ../config/zeek:/usr/local/zeek/share/zeek/site:ro
+      - ot_telemetry:/var/ot/telemetry
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    command:
+      - bash
+      - -lc
+      - 'mkdir -p /var/ot/telemetry/zeek && /usr/local/zeek/bin/zeek -i eth1 -e "redef Log::default_logdir = \"/var/ot/telemetry/zeek\";"'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "/usr/local/zeek/bin/zeek -N >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  suricata:
+    image: jasonish/suricata:latest
+    container_name: ot-suricata
+    hostname: suricata
+    networks:
+      - ot-zone
+      - ot-dmz
+    volumes:
+      - ../config/suricata/rules:/var/lib/suricata/rules:ro
+      - ot_telemetry:/var/ot/telemetry
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    entrypoint:
+      - bash
+      - -lc
+    command:
+      - mkdir -p /var/ot/telemetry/suricata && exec /usr/bin/suricata -i eth1 -S /var/lib/suricata/rules/ics-local.rules -l /var/ot/telemetry/suricata --set app-layer.protocols.modbus.enabled=yes --set app-layer.protocols.modbus.detection-enabled=yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "suricata -V >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.13.0
+    container_name: ot-wazuh-manager
+    hostname: wazuh-manager
+    ports:
+      - "1514:1514/tcp"
+      - "1515:1515/tcp"
+      - "15500:55000/tcp"
+    volumes:
+      - ../config/wazuh/ossec.conf:/var/ossec/etc/ossec.conf
+      - ../config/wazuh/shared:/var/ossec/etc/shared
+      - ../config/wazuh/rules:/var/ossec/etc/rules:ro
+      - ../config/wazuh/decoders:/var/ossec/etc/decoders:ro
+      - ot_telemetry:/var/ot/telemetry
+    environment:
+      - API_USERNAME=admin
+      - API_PASSWORD=SecurePassword123!
+      - INDEXER_URL=https://opensearch:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecureAdmin123!
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+    networks:
+      - it-zone
+      - ot-dmz
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "/var/ossec/bin/wazuh-control status | grep -q 'wazuh-analysisd is running'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: ot-opensearch
+    hostname: opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_INSTALL_DEMO_CONFIG=false
+      - DISABLE_SECURITY_PLUGIN=false
+      - compatibility.override_main_response_version=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=SecureAdmin123!
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    networks:
+      - it-zone
+    ports:
+      - "19200:9200"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/localhost/9200"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.13.0
+    container_name: ot-wazuh-dashboard
+    hostname: wazuh-dashboard
+    environment:
+      - OPENSEARCH_HOSTS=https://opensearch:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
+    ports:
+      - "15601:5601"
+    volumes:
+      - ../config/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
+      - ../config/wazuh-dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+    networks:
+      - it-zone
+      - ot-dmz
+    depends_on:
+      - opensearch
+      - wazuh-manager
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/localhost/5601"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  wazuh-agent:
+    image: wazuh/wazuh-agent:4.13.0
+    container_name: ot-wazuh-agent
+    hostname: wazuh-agent
+    environment:
+      - WAZUH_MANAGER=wazuh-manager
+      - WAZUH_AGENT_NAME=ot-soc-agent
+      - WAZUH_AGENT_GROUP=default
+    volumes:
+      - ../config/wazuh/agent-ossec.conf:/var/ossec/etc/ossec.conf
+      - /:/host:ro
+      - /var/log:/var/log:ro
+    cap_add:
+      - AUDIT_CONTROL
+      - SYS_PTRACE
+      - NET_ADMIN
+    networks:
+      - it-zone
+    depends_on:
+      wazuh-manager:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  it-zone:
+    driver: bridge
+    name: ot-it-zone
+  ot-dmz:
+    driver: bridge
+    name: ot-dmz
+  ot-zone:
+    driver: bridge
+    name: ot-zone
+
+volumes:
+  opensearch_data:
+  ot_telemetry:

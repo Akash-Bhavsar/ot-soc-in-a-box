@@ -1,0 +1,126 @@
+<!-- ====================================================================
+     OT SOC-in-a-Box — Custom Wazuh Correlation Rules
+     Covers the full ICS Cyber Kill Chain:
+       Recon → Initial Access → Exploitation → OT Manipulation → Impact
+     ==================================================================== -->
+
+<!-- ========================= SURICATA IDS ========================= -->
+<group name="ot,telemetry,suricata,">
+
+  <!-- Base rule: any Suricata alert from the OT telemetry pipeline -->
+  <rule id="100100" level="3">
+    <if_sid>86601</if_sid>
+    <location>/var/ot/telemetry/suricata/eve.json</location>
+    <description>OT Suricata alert event</description>
+  </rule>
+
+  <!-- EXPLOITATION: Modbus write operations (SID 9000001-9000004) -->
+  <rule id="100101" level="7">
+    <if_sid>100100</if_sid>
+    <field name="alert.signature_id">^900000\d$</field>
+    <description>OT Modbus write operation detected (Suricata)</description>
+    <mitre>
+      <id>T0883</id>
+    </mitre>
+  </rule>
+
+  <!-- RECON: Modbus read/enumeration operations (SID 9000010-9000011) -->
+  <rule id="100102" level="5">
+    <if_sid>100100</if_sid>
+    <field name="alert.signature_id">^900001\d$</field>
+    <description>OT Modbus reconnaissance - register enumeration detected</description>
+    <mitre>
+      <id>T0802</id>
+    </mitre>
+  </rule>
+
+  <!-- RECON: Modbus diagnostics/device fingerprinting (SID 9000020-9000021) -->
+  <rule id="100104" level="6">
+    <if_sid>100100</if_sid>
+    <field name="alert.signature_id">^900002\d$</field>
+    <description>OT Modbus device fingerprinting attempt detected</description>
+    <mitre>
+      <id>T0846</id>
+    </mitre>
+  </rule>
+
+  <!-- IMPACT: Modbus write flooding - Denial of Control -->
+  <rule id="100103" level="12" frequency="5" timeframe="30">
+    <if_matched_sid>100101</if_matched_sid>
+    <description>CRITICAL: OT Modbus write flooding - Denial of Control attack</description>
+    <mitre>
+      <id>T0813</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<!-- ==================== SSH BRUTE FORCE ON OT ==================== -->
+<group name="ot,ssh,brute_force,">
+
+  <!-- Escalate built-in SSH brute force (rule 5712) for OT context -->
+  <rule id="100110" level="12">
+    <if_sid>5712</if_sid>
+    <description>CRITICAL: SSH brute force attack targeting OT infrastructure</description>
+    <mitre>
+      <id>T0886</id>
+    </mitre>
+  </rule>
+
+  <!-- Escalate built-in repeated SSH auth failures (rule 5720) -->
+  <rule id="100111" level="10">
+    <if_sid>5720</if_sid>
+    <description>Repeated SSH authentication failures on OT system</description>
+    <mitre>
+      <id>T0886</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<!-- ================ WEB ATTACKS AGAINST OT HMI ================ -->
+<group name="ot,web,exploit,">
+
+  <!-- SQL injection against OT HMI web interface -->
+  <rule id="100120" level="12">
+    <if_sid>31104</if_sid>
+    <url>openplc|login|hardware|programs|dashboard|monitoring</url>
+    <description>CRITICAL: SQL injection attempt against OT HMI web interface</description>
+    <mitre>
+      <id>T0866</id>
+    </mitre>
+  </rule>
+
+  <!-- XSS against OT HMI web interface -->
+  <rule id="100121" level="10">
+    <if_sid>31105</if_sid>
+    <description>XSS attack against OT HMI/SCADA web interface</description>
+    <mitre>
+      <id>T0866</id>
+    </mitre>
+  </rule>
+
+  <!-- Any successful web attack (returned 200) -->
+  <rule id="100122" level="14">
+    <if_sid>31106</if_sid>
+    <description>CRITICAL: Web attack against OT system returned success (200)</description>
+    <mitre>
+      <id>T0866</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<!-- ======================== ZEEK METADATA ======================== -->
+<group name="ot,telemetry,zeek,">
+
+  <!-- Zeek: Modbus/TCP connection on port 502 -->
+  <rule id="100200" level="3">
+    <decoded_as>json</decoded_as>
+    <location>/var/ot/telemetry/zeek/conn.log</location>
+    <field name="id.resp_p">^502(0)?$</field>
+    <field name="proto">^tcp$</field>
+    <description>OT Modbus TCP connection observed (Zeek)</description>
+  </rule>
+
+</group>
