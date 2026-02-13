@@ -6,7 +6,7 @@ One command deploys an 8-service security operations center for industrial contr
 
 ## Demo
 
-https://github.com/<your-username>/ot-soc-in-a-box/releases/download/v1.0.0/demo.webm
+https://github.com/Akash-Bhavsar/ot-soc-in-a-box/releases/download/v1.0.0/demo.webm
 
 > 7-phase ICS Cyber Kill Chain attack simulation running against the full lab — from Modbus reconnaissance through denial of control, with real-time Wazuh alerts and automated SOAR response.
 
@@ -53,7 +53,7 @@ https://github.com/<your-username>/ot-soc-in-a-box/releases/download/v1.0.0/demo
 
 ```bash
 # Clone and configure
-git clone https://github.com/<your-username>/ot-soc-in-a-box.git
+git clone https://github.com/Akash-Bhavsar/ot-soc-in-a-box.git
 cd ot-soc-in-a-box
 cp .env.example .env        # Edit .env to set your own passwords
 
