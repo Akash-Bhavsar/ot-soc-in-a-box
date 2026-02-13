@@ -12,6 +12,9 @@ Thumbs.db
 *.swo
 *~
 
+# Media (uploaded via GitHub Releases, not committed)
+media/
+
 # Docker volumes (runtime data)
 opensearch_data/
 
